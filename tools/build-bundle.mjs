@@ -142,6 +142,7 @@ function bundledSkillProvider() {
     locator: bundledSkillPath,
   };
   return {
+    name: SKILL_PROVIDER,
     list: () => Promise.resolve(end >= 0 ? [meta] : []),
     get: () => Promise.resolve(Object.assign({}, meta, { content: end >= 0 ? raw.slice(end + 5) : raw })),
   };
@@ -153,12 +154,16 @@ function bundledSkillProvider() {
  * mirroring the dsh-genui asset-route pattern.
  * @param ctx - cordis host context.
  */
+const inject = ["systemPrompt"];
+
 function apply(ctx) {
-  ctx.systemPrompt.section({
-    name: "dsh-html:fence",
-    order: 106,
-    text: SECTION_TEXT,
-  });
+  ctx.effect(() => {
+    ctx.systemPrompt.section({
+      name: "dsh-html:fence",
+      order: 106,
+      text: SECTION_TEXT,
+    });
+  }, "dsh-html.systemPrompt.section()");
   ctx.inject(["skills"], (skillCtx) => {
     skillCtx.skills.registerProvider(() => bundledSkillProvider());
   });
@@ -176,7 +181,7 @@ function apply(ctx) {
   });
 }
 
-export { SECTION_TEXT, apply };
+export { SECTION_TEXT, apply, inject };
 `
 writeFileSync(join(bundleDir, 'lib', 'index.js'), indexJs)
 
@@ -185,12 +190,24 @@ const clientJs = `/**
  * dsh-html-render — browser half (built by tools/build-bundle.mjs — do not edit).
  * Wraps the rendering kernel in the web shell's ModuleLoader contract and
  * points the kernel's asset base at this plugin's own webserver route.
+ *
+ * The factory MUST return a plugin-shaped module (an object exposing apply);
+ * the loader activates it as a client Cordis plugin. Without a returned
+ * apply the loader reports: "invalid plugin, expect function or object with
+ * an apply method, received undefined" (mirrors the dsh-genui client half).
  */
 window.__ModuleLoader__.load({
   id: "dsh-html-render",
   factory: function () {
     window.__dshHtmlAssetsBase = "/plugins/dsh-html-render/assets/katex/";
     ${kernel}
+    return {
+      apply: function () {
+        return function dispose() {
+          try { if (window.__dshHtmlRenderer) window.__dshHtmlRenderer.disable() } catch (e) {}
+        }
+      },
+    }
   }
 })
 `

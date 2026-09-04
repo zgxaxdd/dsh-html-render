@@ -1,6 +1,6 @@
 {
   "name": "dsh-html-render",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "description": "Inline HTML + KaTeX renderer for DeepSeek Harness (DSH) chats — sandboxed iframes, theme-adaptive, height-accurate, zero network.",
   "license": "MIT",
   "type": "module",

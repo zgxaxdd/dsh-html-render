@@ -75,6 +75,7 @@ function bundledSkillProvider() {
     locator: bundledSkillPath,
   };
   return {
+    name: SKILL_PROVIDER,
     list: () => Promise.resolve(end >= 0 ? [meta] : []),
     get: () => Promise.resolve(Object.assign({}, meta, { content: end >= 0 ? raw.slice(end + 5) : raw })),
   };
@@ -86,12 +87,16 @@ function bundledSkillProvider() {
  * mirroring the dsh-genui asset-route pattern.
  * @param ctx - cordis host context.
  */
+const inject = ["systemPrompt"];
+
 function apply(ctx) {
-  ctx.systemPrompt.section({
-    name: "dsh-html:fence",
-    order: 106,
-    text: SECTION_TEXT,
-  });
+  ctx.effect(() => {
+    ctx.systemPrompt.section({
+      name: "dsh-html:fence",
+      order: 106,
+      text: SECTION_TEXT,
+    });
+  }, "dsh-html.systemPrompt.section()");
   ctx.inject(["skills"], (skillCtx) => {
     skillCtx.skills.registerProvider(() => bundledSkillProvider());
   });
@@ -109,4 +114,4 @@ function apply(ctx) {
   });
 }
 
-export { SECTION_TEXT, apply };
+export { SECTION_TEXT, apply, inject };

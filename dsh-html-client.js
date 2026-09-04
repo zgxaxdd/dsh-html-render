@@ -1,5 +1,5 @@
 /* dsh-html renderer — 在 DSH 会话消息流中内联渲染 HTML
- * dsh-html-renderer version: 7
+ * dsh-html-renderer version: 8
  *
  * 通道一（fence 通道）：接管 ```dsh-html（及内容判定的 ```html）代码块，
  *  在原始代码块旁挂载 iframe(srcdoc)，sandbox="allow-scripts"（不透明源），
@@ -29,14 +29,17 @@
  */
 (function () {
   'use strict'
-  var VERSION = 7
+  var VERSION = 8
   if (window.__dshHtmlRenderer) {
+    /* N8 回归修复：同版本 double-load（插件形态 + 磁盘补丁并存）时【直接让位】，
+     * 绝不 disable 正在运行的实例 —— 此前先杀后退导致刷新后渲染器全灭。 */
+    var oldVersion = window.__dshHtmlRenderer.version || 0
+    if (oldVersion >= VERSION) return
     try {
       if (typeof window.__dshHtmlRenderer.disable === 'function') window.__dshHtmlRenderer.disable()
     } catch (e) {}
-    if ((window.__dshHtmlRenderer.version || 0) >= VERSION) return
     try {
-      console.warn('[dsh-html] replacing older renderer v' + window.__dshHtmlRenderer.version + ' with v' + VERSION + ' — hard-refresh recommended')
+      console.warn('[dsh-html] replacing older renderer v' + oldVersion + ' with v' + VERSION + ' — hard-refresh recommended')
     } catch (e) {}
   }
   window.__dshHtmlRenderer = { version: VERSION, startedAt: Date.now(), debug: false }

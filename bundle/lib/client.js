@@ -2,13 +2,18 @@
  * dsh-html-render — browser half (built by tools/build-bundle.mjs — do not edit).
  * Wraps the rendering kernel in the web shell's ModuleLoader contract and
  * points the kernel's asset base at this plugin's own webserver route.
+ *
+ * The factory MUST return a plugin-shaped module (an object exposing apply);
+ * the loader activates it as a client Cordis plugin. Without a returned
+ * apply the loader reports: "invalid plugin, expect function or object with
+ * an apply method, received undefined" (mirrors the dsh-genui client half).
  */
 window.__ModuleLoader__.load({
   id: "dsh-html-render",
   factory: function () {
     window.__dshHtmlAssetsBase = "/plugins/dsh-html-render/assets/katex/";
     /* dsh-html renderer — 在 DSH 会话消息流中内联渲染 HTML
- * dsh-html-renderer version: 7
+ * dsh-html-renderer version: 8
  *
  * 通道一（fence 通道）：接管 ```dsh-html（及内容判定的 ```html）代码块，
  *  在原始代码块旁挂载 iframe(srcdoc)，sandbox="allow-scripts"（不透明源），
@@ -38,14 +43,17 @@ window.__ModuleLoader__.load({
  */
 (function () {
   'use strict'
-  var VERSION = 7
+  var VERSION = 8
   if (window.__dshHtmlRenderer) {
+    /* N8 回归修复：同版本 double-load（插件形态 + 磁盘补丁并存）时【直接让位】，
+     * 绝不 disable 正在运行的实例 —— 此前先杀后退导致刷新后渲染器全灭。 */
+    var oldVersion = window.__dshHtmlRenderer.version || 0
+    if (oldVersion >= VERSION) return
     try {
       if (typeof window.__dshHtmlRenderer.disable === 'function') window.__dshHtmlRenderer.disable()
     } catch (e) {}
-    if ((window.__dshHtmlRenderer.version || 0) >= VERSION) return
     try {
-      console.warn('[dsh-html] replacing older renderer v' + window.__dshHtmlRenderer.version + ' with v' + VERSION + ' — hard-refresh recommended')
+      console.warn('[dsh-html] replacing older renderer v' + oldVersion + ' with v' + VERSION + ' — hard-refresh recommended')
     } catch (e) {}
   }
   window.__dshHtmlRenderer = { version: VERSION, startedAt: Date.now(), debug: false }
@@ -1007,5 +1015,12 @@ window.__ModuleLoader__.load({
   else window.addEventListener('DOMContentLoaded', onBodyReady)
 })()
 
+    return {
+      apply: function () {
+        return function dispose() {
+          try { if (window.__dshHtmlRenderer) window.__dshHtmlRenderer.disable() } catch (e) {}
+        }
+      },
+    }
   }
 })
