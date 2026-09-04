@@ -1,5 +1,45 @@
 # Changelog
 
+## v3.2.0 — 审查修复：工具栏按钮/通道二沙箱/安全加固/性能（运行时标记 version: 5）
+
+对照 2026-09 深度审查（A/B/C/D/E/F/G 清单）修复：
+
+**功能与正确性**
+- 修 **A1（严重）**：工具栏「源码 / 复制 / 重载」三个按钮引用未定义变量 `mount`（此前仅「新标签打开」正确）—— 挂载对象统一命名，三按钮恢复正常。
+- 修 **A2（严重）+ B1（安全）**：通道二（裸 mdt 片段）弃用 shadow DOM + `innerHTML`（在父页面源解析 = 沙箱完全绕过），改为**与通道一相同的沙箱 iframe 管线**。
+- 修 **A4**：`_enriching` 期间被吞的更新登记 `_pending` 并补渲染，不再丢帧。
+- 修 **A5**：流式异常中断（宿主不移除 `data-streaming`）超 30s 强制视为 settled；重载按钮不再永久 disabled。
+- 修 **A6**：公式渲染失败时保留完整 `$…$` 定界符（不再裸文本）。
+- 修 **A7**：超 1MB 围栏的仅源码容器纳入 `mounts` 生命周期（可被重钉/清理）。
+- 删 **A8** 死代码：`hasLabel`、`rowOf`、空 if 分支、未用形参。
+
+**安全**
+- 修 **B2**：「新标签打开」使用含 `sandbox allow-scripts` 指令的专属 CSP —— 顶层文档也变不透明源（blob URL 不再继承父源）。
+- 修 **B3**：postMessage 带 mount id，O(1) 定位 + `ev.source` 校验。
+- 修 **B4**：KaTeX 显式 `maxExpand/maxSize` + 单条公式长度/单围栏数量上限 + 结果缓存。
+- 修 **B5**：注入 iframe 的主题色经 `safeColor` 白名单校验。
+- **B6**：`vendor/katex/VERSION` + `SHA256SUMS`，CI 校验供应链完整性。
+
+**性能**
+- **C2**：iframe 内测高轮询自适应 —— 10s 无变化后 400ms → 2000ms 降频，变化即恢复。
+- **C3**：KaTeX 结果 LRU 缓存（流式重复渲染直接命中）。
+- **C5**：去掉 `Array.from(mounts.entries())` 拷贝。
+- **C7**：主题采样 TTL 2s → 10s。
+
+**健壮性**
+- **D1**：KaTeX/CSS 加载失败指数退避重试（≤3 次）+ `resetKatex()` 手动复位，不再页面级永久降级。
+- **D2**：公式占位符改用 U+E000 私有区 + 随机前缀，还原带越界校验。
+- **D4**：片段孤儿清理简化。**D5**：iframe error 监听提前注册 + 可见提示。**D6**：blob 回收 60s → 5min。**D7**：异常计入 `stats().errors`，可开 `debug`。**D8**：单一 `VERSION` 常量 + 旧版自动 disable 替换。**D9**：pagehide 统一清理。**D10**：aria-label / focus-visible / prefers-reduced-motion。**D11**：复制失败反馈 + `execCommand` 兜底。
+
+**工程化**
+- **E1**：新增跨平台 Node 安装器 `install.mjs`（Windows/Linux/macOS，npm/pnpm/bun/全局路径探测，`--dist/--check/--uninstall/--all/--port`）；PowerShell 脚本保留为 Windows 封装。
+- **E3/E4**：PS 注入改为定位**最后一个** `</body>`（大小写不敏感）+ 临时文件原子替换。
+- **E5**：卸载时若 dist 已被升级重部署，丢弃过期备份防降级。
+- **F2**：`MAX/PAD` 常量注入 iframe 脚本，消除魔法数字双写。**F3/G2**：`tools/check-version.mjs` CI 强制 client ↔ CHANGELOG ↔ README 版本一致。**F6**：移除含本机绝对路径的 `archive/host-plugin.js`。
+- **G1**：README 特性表损坏行修复。**G4**：新增 SECURITY.md / CONTRIBUTING.md / .gitignore / package.json。**G5/G6**：README 补充沙箱能力白名单 + 已知限制 + 浏览器矩阵 + 端口说明。
+
+**本轮未做（诚实记录，留待后续）**：C1/C4 增量扫描、C6 CSS 外链化、D3 DOM 手术绝对定位、G3 完整测试套件（ESLint/单测/e2e）、E7 `-WhatIf`。
+
 ## v3.1.0 — 公式安全 + 降级兜底 + 截断指示（运行时标记 version: 4）
 
 - **修复严重 bug**：KaTeX 加载失败（vendor 缺失/404）时原失败路径不回调 → `enrichRaw` 永久挂起 → **整个围栏永远不渲染**。现在失败走降级回调：原文直出，围栏永不卡死。

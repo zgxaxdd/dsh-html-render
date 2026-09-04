@@ -93,11 +93,18 @@ function Invoke-Target([string]$dist) {
                 Write-Host "[OK] index.html restored from backup -> $indexPath"
             } else {
                 $clean = $html.Replace($marker, '').Replace("$marker`n", '')
-                [System.IO.File]::WriteAllText($indexPath, $clean, (New-Object System.Text.UTF8Encoding($false)))
+                $tmp = "$indexPath.tmp"
+                [System.IO.File]::WriteAllText($tmp, $clean, (New-Object System.Text.UTF8Encoding($false)))
+                Move-Item $tmp $indexPath -Force   # E4：原子替换
                 Write-Host '[OK] injected script tag removed (no backup existed; line-level restore).'
             }
         } else {
             Write-Host '[SKIP] index.html carries no injection; nothing to restore.'
+            # E5：若备份来自升级前的旧版 index.html（与当前不一致），丢弃防降级
+            if ((Test-Path $bakPath) -and ((Get-FileHash $indexPath -Algorithm SHA256).Hash -ne (Get-FileHash $bakPath -Algorithm SHA256).Hash)) {
+                Remove-Item $bakPath -Force
+                Write-Host '[OK] stale backup (from a pre-upgrade version) discarded.'
+            }
         }
         if (Test-Path $clientDir) {
             Remove-Item $clientDir -Recurse -Force
@@ -185,10 +192,14 @@ function Invoke-Target([string]$dist) {
     if ($injected) {
         Write-Host '[SKIP] index.html already injected'
     } else {
-        if (-not $html.Contains('</body>')) { Write-Host "[ISSUE] No '</body>' found in $indexPath"; return 1 }
-        $new = $html.Replace('</body>', "$marker`n</body>")
-        [System.IO.File]::WriteAllText($indexPath, $new, (New-Object System.Text.UTF8Encoding($false)))
-        Write-Host '[OK] script tag injected before </body>'
+        # E3：定位【最后一个】</body>（大小写不敏感）再注入，避免误伤内联 JS 字符串
+        $idx = $html.LastIndexOf('</body>', [System.StringComparison]::OrdinalIgnoreCase)
+        if ($idx -lt 0) { Write-Host "[ISSUE] No '</body>' found in $indexPath"; return 1 }
+        $new = $html.Substring(0, $idx) + $marker + "`n" + $html.Substring($idx)
+        $tmp = "$indexPath.tmp"
+        [System.IO.File]::WriteAllText($tmp, $new, (New-Object System.Text.UTF8Encoding($false)))
+        Move-Item $tmp $indexPath -Force        # E4：原子替换
+        Write-Host '[OK] script tag injected before the last </body>'
     }
 
     try {

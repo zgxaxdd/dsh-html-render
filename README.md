@@ -13,8 +13,8 @@
 | **聊天内直渲** | 模型输出 ```` ```dsh-html ```` 围栏 → 聊天流内出现真 HTML（不是代码块、不是 Markdown 源码） |
 | **LaTeX 公式** | `$…$`（行内）/ `$$…$$`（块级）/ `\(…\)` / `\[…\]` 由**本地 KaTeX** 预渲染 —— 零外网、绝不出现未渲染源码 |
 | **无痕融入** | 无边框无底色；背景**实时采样宿主主题**（深色模式下就是深色），与对话流无缝 |
-- **公式安全** | 公式替换前先摘除 HTML 标签与 script/style/pre/code 块 —— 公式绝不进代码；KaTeX 不可用时原文直出，**围栏永不卡死不渲染** |
-| **高度精确自适应** | 按内容真实边界测高 + 字体就绪重测 + 轮询兜底 —— 无内部滚动条、无空白、无"越测越高"；超 12000px 上限时工具栏明示「高度已截断」 |
+| **公式安全** | 公式替换前先摘除 HTML 标签与 script/style/pre/code 块 —— 公式绝不进代码；KaTeX 不可用时原文直出，**围栏永不卡死不渲染** |
+| **高度精确自适应** | 按内容真实边界测高 + 字体就绪重测 + 轮询兜底（闲置自动降频）—— 无内部滚动条、无空白、无"越测越高"；超 12000px 上限时工具栏明示「高度已截断」 |
 | **交互全支持** | 页签 / 折叠 / 滑杆 / 即时计算 / 本地判分 —— 脚本只在本围栏沙箱内运行 |
 | **安全沙箱** | `sandbox="allow-scripts"` 不透明源 + 文档内 CSP：禁网络、禁 iframe、禁访问父页 |
 | **零依赖** | 一个 ~30 KB IIFE（除 KaTeX 外无任何依赖、无构建步骤、无框架） |
@@ -22,14 +22,17 @@
 
 ## 🚀 Quick Start（3 步，约 1 分钟）
 
-**前置**：本地/自托管的 DSH 部署（npx 安装或源码构建），Windows + PowerShell。
+**前置**：本地/自托管的 DSH 部署（npx 安装或源码构建）。
 
 ```powershell
-# 1) 安装（幂等：自动探测 npx 缓存里的 dist；已装则全部 SKIP）
+# 1) 安装（幂等：自动探测 dist；已装则全部 SKIP）
+#    Windows（PowerShell）：
 powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1
+#    Windows / Linux / macOS（Node 18+，跨平台主安装器）：
+node install.mjs
 #    源码构建请显式指定 dist：
-#    powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Dist "C:\path\to\apps\web\dist"
-#    多份 npx 部署共存时：加 -All 处理全部探测到的 dist
+#    node install.mjs --dist "C:\path\to\apps\web\dist"
+#    多份 npx 部署共存时：加 --all 处理全部探测到的 dist
 
 # 2) 浏览器硬刷新（Ctrl+F5）—— 前端壳对静态资源不设 cache-control，普通刷新可能仍用旧缓存
 
@@ -50,7 +53,7 @@ $$T = 9550 \times \frac{P}{n} \approx 10.2\ \mathrm{N\cdot m}$$
 
 ### ✅ Verify in 60 seconds
 
-- 浏览器控制台（F12）输入 `window.__dshHtmlRenderer` → 应显示 `{version: 3, …}`；
+- 浏览器控制台（F12）输入 `window.__dshHtmlRenderer.stats()` → 应返回 `{version: <当前>，errors: 0, …}`（与 [CHANGELOG](CHANGELOG.md) 最新「运行时标记 version」一致）；
 - 或运行安装状态检查：
 
 ```powershell
@@ -72,7 +75,7 @@ powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Check
 
 ## 🔧 How it works
 
-- **双通道**：通道一把 ```` ```dsh-html ````（及内容判定的 ```` ```html ````）代码块接管为沙箱 iframe；通道二把裸 `<div class="mdt">` 纯文本节点做 shadow DOM 静态渲染（旧协议兜底）。宿主没接管到的围栏保持原样 —— **零侵入**。
+- **双通道**：通道一把 ```` ```dsh-html ````（及内容判定的 ```` ```html ````）代码块接管为沙箱 iframe；通道二把裸 `<div class="mdt">` 纯文本节点接管为**同一条沙箱 iframe 管线**（v5 起不再使用 innerHTML/shadow DOM 在父页面源解析）。宿主没接管到的围栏保持原样 —— **零侵入**。
 - **为什么是磁盘补丁而不是动态插件**：DSH 部署中，承载 Web 壳（静态资源/3080 端口）的进程与承载会话/动态插件的进程不是同一个 —— 动态插件注册的 HTTP 路由对浏览器不可见（实测 404）。而 Web 壳每次请求从磁盘重读 `dist/index.html`，所以**改磁盘即热生效**。profile 插件化（`dsh plugin add` 形态）在 Roadmap 上。
 - **KaTeX 父页预渲染**：公式在**父页面**用本地 KaTeX（`/dsh-html/katex/` 静态托管）转成数学 HTML，再连同内联 CSS（字体路径已改写为绝对路径）一次性注入 srcdoc —— 一次成型，测高准确；**iframe 内不执行任何 KaTeX 代码**。
 - **测高策略**：`getBoundingClientRect().bottom` 内容边界（不受视口影响，杜绝 scrollHeight ≥ 视口导致的自激增长）+ `document.fonts.ready` 终态重测 + 400ms 轮询兜底（值不变不发包）。
@@ -99,6 +102,16 @@ powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Uninstall
 ```
 
 从备份还原 `index.html` 并删除 `dist\dsh-html\`。`npx` 升级覆盖补丁后，重跑安装脚本即可恢复。
+
+## ⚠️ 已知限制
+
+- **沙箱能力白名单（内容侧）**：围栏脚本运行在不透明源 + CSP 中，可做 DOM/事件/计算等本地交互；**不可**发起网络请求、内嵌 iframe、访问 `parent`/`top`、`alert/confirm/prompt`、表单提交、`window.open`、`localStorage`、`download` 属性、弹窗与模态 —— 这些 API 会被静默阻断（模型写 `alert('正确！')` 不会弹窗，属预期）。
+- **平台**：仅本地/自托管 DSH 部署（需要写 `dist` 的文件系统权限）；云端托管不可用。
+- **升级**：`npx` 重装覆盖 dist 后渲染消失，重跑安装器即可恢复（备份机制保证可还原、可卸载）。
+- **长会话**：每个渲染围栏是一个独立 iframe，历史消息较多时建议用 `__dshHtmlRenderer.disable()` 临时关闭渲染。
+- **硬刷新**：前端壳对静态资源不设 cache-control，升级后必须 Ctrl+F5。
+- **浏览器支持矩阵**：Chromium 120+ / Firefox 121+ / Safari 17.5+（依赖 `light-dark()`、`backdrop-filter`、`ResizeObserver`、`:focus-within`）。
+- **端口探测**：安装器的 HTTP 自检默认 `3080`，可用环境变量 `DSH_WEB_PORT` 覆盖，或 `install.mjs --port <n>`。
 
 ## ❓ FAQ
 

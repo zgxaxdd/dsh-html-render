@@ -14,17 +14,22 @@ jobs:
         with:
           node-version: 20
 
-      - name: Renderer syntax check
+      - name: Renderer syntax
         run: node --check dsh-html-client.js
 
-      - name: Installer PowerShell syntax check
-        run: pwsh -NoProfile -Command '$t=$null; $e=$null; [System.Management.Automation.Language.Parser]::ParseFile("install-dsh-html.ps1", [ref]$t, [ref]$e) | Out-Null; if ($e.Count -gt 0) { $e | ForEach-Object { Write-Host $_.Message }; exit 1 } else { Write-Host "install-dsh-html.ps1 syntax OK" }'
-
-      - name: Vendor integrity
+      - name: Installer syntax (node + powershell)
         run: |
-          test -f vendor/katex/katex.min.js
-          test -f vendor/katex/katex.min.css
+          node --check install.mjs
+          pwsh -NoProfile -Command '$t=$null; $e=$null; [System.Management.Automation.Language.Parser]::ParseFile("install-dsh-html.ps1", [ref]$t, [ref]$e) | Out-Null; if ($e.Count -gt 0) { $e | ForEach-Object { Write-Host $_.Message }; exit 1 } else { Write-Host "install-dsh-html.ps1 syntax OK" }'
+
+      - name: Version consistency (client ↔ CHANGELOG ↔ README)
+        run: node tools/check-version.mjs
+
+      - name: Vendor integrity (SHA256SUMS + fonts)
+        run: |
+          test -f vendor/katex/VERSION
           test -f vendor/katex/LICENSE
+          node tools/verify-sha256sums.mjs vendor/katex/SHA256SUMS vendor/katex
           n=$(ls vendor/katex/fonts/*.woff2 | wc -l)
           echo "katex fonts: $n woff2"
           test "$n" -ge 20
