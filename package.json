@@ -20,6 +20,7 @@
     "lint": "eslint dsh-html-client.js install.mjs tools/*.mjs",
     "test": "node --test tools/test-unit.mjs",
     "build:bundle": "node tools/build-bundle.mjs",
+    "publish:bundle": "cd bundle && npm publish",
     "setup": "node install.mjs",
     "setup:check": "node install.mjs --check",
     "setup:undo": "node install.mjs --uninstall"

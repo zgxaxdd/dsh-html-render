@@ -80,15 +80,20 @@ powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Check
 v3.4.0 起提供 **out-of-tree profile bundle**（参照 dsh-genui 的官方插件机制）——一条命令安装，**DSH 升级（npx 覆盖 dist）后渲染不失效**，且向**所有会话**注入 dsh-html 围栏契约（systemPrompt 节）与打包 skill：
 
 ```sh
-dsh plugin --profile web add dsh-html-render          # npm 形态（发布后）
-dsh plugin --profile web add link:<仓库>/bundle       # 本地 link 形态（bundle/ 已构建好）
-dsh plugin --profile web remove dsh-html-render       # 卸载
+# 方式 A：npm 发布形态（仓库维护者先发布一次，见下；其他用户一条命令安装）
+dsh plugin --profile web add dsh-html-render
+# 方式 B：本地 link 形态（无需 npm，任何克隆/下载了仓库的用户都可用）
+dsh plugin --profile web add link:<仓库绝对路径>/bundle
+# 卸载
+dsh plugin --profile web remove dsh-html-render
 ```
+
+**发布（仅仓库维护者，一次性）**：`npm adduser` 登录后运行 `npm run publish:bundle`（发布前自动跑全套 check + 重建 bundle，再 `cd bundle && npm publish`；`dsh-html-render` 名称当前在 npm 上可用）。
 
 - **Host 半边**：注册 `/plugins/dsh-html-render/assets/katex/*` 资产路由（引擎/字体插件自托管）+ systemPrompt 围栏契约节 + bundled skill；
 - **Client 半边**：ModuleLoader 包装同一渲染内核，资产基座自动指向插件路由；
 - 安装后需**重启 DSH host** 并刷新浏览器（boot 图谱带上新 client bundle）；
-- 与磁盘补丁并存安全（`window.__dshHtmlRenderer` 版本守卫保证单实例），建议插件形态下执行 `node install.mjs --uninstall` 卸载磁盘补丁。
+- 与磁盘补丁并存安全（`window.__dshHtmlRenderer` 版本守卫：同版本让位、仅升级替换，双形态任何加载顺序都恰好存活一个实例）；建议插件形态下执行 `node install.mjs --uninstall` 卸载磁盘补丁。
 
 ## 🔧 How it works
 

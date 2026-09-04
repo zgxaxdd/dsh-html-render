@@ -39,6 +39,7 @@ writeFileSync(join(bundleDir, 'package.json'), JSON.stringify({
   license: 'MIT',
   type: 'module',
   main: './lib/index.js',
+  repository: { type: 'git', url: 'git+https://github.com/zgxaxdd/dsh-html-render.git' },
   exports: {
     '.': './lib/index.js',
     './client': './lib/client.js',
@@ -46,6 +47,9 @@ writeFileSync(join(bundleDir, 'package.json'), JSON.stringify({
   dsh: {
     bundle: { patch: './cordis.patch.yml' },
     client: { inject: [], platform: 'web' },
+  },
+  scripts: {
+    prepublishOnly: 'cd .. && npm run check && npm run build:bundle',
   },
   files: ['lib', 'skills', 'cordis.patch.yml', 'README.md'],
   keywords: ['dsh', 'dsh-plugin', 'deepseek', 'katex', 'html-renderer', 'sandbox'],
