@@ -1,5 +1,25 @@
 # Changelog
 
+## v3.4.0 — P0-1 插件化：out-of-tree profile bundle + 主题即时跟随（运行时标记 version: 7）
+
+**P0-1 · 双形态发布（本次核心）**
+- 新增 `tools/build-bundle.mjs`：从内核 + vendor + skill 组装 out-of-tree profile bundle（`bundle/`）。
+- **Host 半边**（`bundle/lib/index.js`，参照 dsh-genui 模式）：
+  - `webServer.register({kind:"prefix"})` 注册插件自有资产路由 `/plugins/dsh-html-render/assets/katex/*`（KaTeX 引擎/字体由插件目录托管，**DSH 升级不再使其失效**）；
+  - `systemPrompt.section({name:"dsh-html:fence", order:106})` 向**所有会话**注入 dsh-html 围栏契约（全局行为，不再依赖分区 SKILL.md）；
+  - `skills.registerProvider` 打包 `skills/dsh-html-usage/SKILL.md`（bundled skill）。
+- **Client 半边**（`bundle/lib/client.js`）：`window.__ModuleLoader__.load` 包装渲染内核 + 预设 `window.__dshHtmlAssetsBase` 指向插件路由；`dsh.client: {inject: [], platform: "web"}`。
+- 安装/卸载：`dsh plugin --profile web add dsh-html-render`（本地 `link:` 形态已在本机验证注册成功，`dsh plugin list` 可见）；与磁盘补丁形态由 `window.__dshHtmlRenderer` 版本守卫互斥（双形态并存安全）。
+- 内核配套：`ASSETS_BASE = window.__dshHtmlAssetsBase || '/dsh-html/katex/'` —— 两种形态共用同一内核，资产来源按形态自动切换。
+
+**P1-3 · 主题即时跟随（替代 10s TTL）**
+- `matchMedia('(prefers-color-scheme: dark)')` change + `documentElement` 属性观察（class/style/data-theme）→ 立即失效调色板 → 全量重渲染已挂载围栏 + 按缓存原文重建通道二片段。深浅切换 0 延迟。
+
+**其他**
+- `package.json` 增加 `build:bundle` 脚本与 `bundle/` 产物；检查链覆盖 bundle 语法。
+- 本机验证：`dsh plugin --profile web list` 可见 `dsh-html-render@link:...`；符号链接指向 bundle 目录。
+- **待用户操作**：重启 DSH host（激活资产路由/systemPrompt/skill 三项 host 半边注册）+ 浏览器重载（boot 图谱带新 client bundle）。
+
 ## v3.3.0 — 审查修复 N1–N7：缓存击穿/泄漏/bfcache/工程护栏（运行时标记 version: 6）
 
 **核心修复：缓存击穿（“功能无法使用”根治）**

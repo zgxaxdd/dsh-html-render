@@ -1,6 +1,6 @@
 {
   "name": "dsh-html-render",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "Inline HTML + KaTeX renderer for DeepSeek Harness (DSH) chats — sandboxed iframes, theme-adaptive, height-accurate, zero network.",
   "license": "MIT",
   "type": "module",
@@ -16,9 +16,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check dsh-html-client.js && node --check install.mjs && node tools/check-version.mjs && node tools/verify-sha256sums.mjs vendor/katex/SHA256SUMS vendor/katex && node tools/check-mount-refs.mjs",
+    "check": "node --check dsh-html-client.js && node --check install.mjs && node tools/check-version.mjs && node tools/verify-sha256sums.mjs vendor/katex/SHA256SUMS vendor/katex && node tools/check-mount-refs.mjs && node --check bundle/lib/client.js && node --check bundle/lib/index.js",
     "lint": "eslint dsh-html-client.js install.mjs tools/*.mjs",
     "test": "node --test tools/test-unit.mjs",
+    "build:bundle": "node tools/build-bundle.mjs",
     "setup": "node install.mjs",
     "setup:check": "node install.mjs --check",
     "setup:undo": "node install.mjs --uninstall"

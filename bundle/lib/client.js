@@ -1,4 +1,13 @@
-/* dsh-html renderer — 在 DSH 会话消息流中内联渲染 HTML
+/**
+ * dsh-html-render — browser half (built by tools/build-bundle.mjs — do not edit).
+ * Wraps the rendering kernel in the web shell's ModuleLoader contract and
+ * points the kernel's asset base at this plugin's own webserver route.
+ */
+window.__ModuleLoader__.load({
+  id: "dsh-html-render",
+  factory: function () {
+    window.__dshHtmlAssetsBase = "/plugins/dsh-html-render/assets/katex/";
+    /* dsh-html renderer — 在 DSH 会话消息流中内联渲染 HTML
  * dsh-html-renderer version: 7
  *
  * 通道一（fence 通道）：接管 ```dsh-html（及内容判定的 ```html）代码块，
@@ -997,3 +1006,6 @@
   if (document.body) onBodyReady()
   else window.addEventListener('DOMContentLoaded', onBodyReady)
 })()
+
+  }
+})

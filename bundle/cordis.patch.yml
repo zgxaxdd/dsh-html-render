@@ -1,0 +1,10 @@
+# dsh-html-render bundle for DeepSeek Harness (dsh).
+# Installed via: dsh plugin --profile web add dsh-html-render
+# The insert row registers the plugin; the host half (lib/index.js) serves the
+# KaTeX assets over its own webserver route and teaches the model the
+# dsh-html fence via a system-prompt section + a bundled skill; the client
+# half (lib/client.js, declared through package.json dsh.client) activates
+# the sandboxed-iframe rendering kernel in the browser.
+- insert:
+    - id: ui-dsh-html
+      name: 'dsh-html-render'
