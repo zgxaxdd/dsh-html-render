@@ -14,6 +14,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install dev deps (eslint/globals for lint)
+        run: npm ci --no-audit --no-fund
+
       - name: Renderer syntax
         run: node --check dsh-html-client.js
 
@@ -22,10 +25,19 @@ jobs:
           node --check install.mjs
           pwsh -NoProfile -Command '$t=$null; $e=$null; [System.Management.Automation.Language.Parser]::ParseFile("install-dsh-html.ps1", [ref]$t, [ref]$e) | Out-Null; if ($e.Count -gt 0) { $e | ForEach-Object { Write-Host $_.Message }; exit 1 } else { Write-Host "install-dsh-html.ps1 syntax OK" }'
 
+      - name: Lint (no-undef catches A1-class scope bugs)
+        run: npx eslint dsh-html-client.js install.mjs tools/*.mjs
+
+      - name: Unit tests (pure functions from shipped source)
+        run: node --test tools/test-unit.mjs
+
+      - name: A1 static guard (mount naming)
+        run: node tools/check-mount-refs.mjs
+
       - name: Version consistency (client ↔ CHANGELOG ↔ README)
         run: node tools/check-version.mjs
 
-      - name: Vendor integrity (SHA256SUMS + fonts)
+      - name: Vendor integrity (SHA256SUMS bidirectional + fonts)
         run: |
           test -f vendor/katex/VERSION
           test -f vendor/katex/LICENSE

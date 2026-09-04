@@ -15,14 +15,26 @@
  * This is the primary cross-platform installer; install-dsh-html.ps1 is the
  * Windows thin wrapper (same semantics).
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync, copyFileSync, renameSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, readdirSync, copyFileSync, renameSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import http from 'node:http'
+import { execSync } from 'node:child_process'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const MARKER = '<script src="/dsh-html/client.js" defer></script>'
+/* 缓存击穿：注入标签携带 client 版本号（?v=N），client.js 升级后浏览器强制拉新，
+ * 杜绝旧版缓存继续运行。兼容旧版无 ?v 的标签（正则匹配两者）。
+ * 注意：不使用 g 标志 —— 带 g 的 .test() 会推进 lastIndex，导致二次判定失效。 */
+const MARKER_RE = /<script src="\/dsh-html\/client\.js(?:\?v=\d+)?" defer><\/script>/
+function clientVersion() {
+  try {
+    const s = readFileSync(clientSrc, 'utf8')
+    const m = s.match(/dsh-html-renderer version:\s*(\d+)/)
+    return m ? m[1] : '0'
+  } catch { return '0' }
+}
+function markerTag() { return '<script src="/dsh-html/client.js?v=' + clientVersion() + '" defer></script>' }
 
 /* ---------------- args ---------------- */
 const args = process.argv.slice(2)
@@ -34,7 +46,11 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--force') opt.force = true
   else if (a === '--all') opt.all = true
   else if (a === '--dist') opt.dist = args[++i]
-  else if (a === '--port') opt.port = Number(args[++i])
+  else if (a === '--port') {
+    const v = Number(args[++i])
+    if (!Number.isInteger(v) || v <= 0) { console.error('[dsh-html] --port 必须是正整数'); process.exit(1) }
+    opt.port = v
+  }
   else if (a === '-h' || a === '--help') { console.log('see header comment'); process.exit(0) }
 }
 const PROBE_PORT = opt.port || Number(process.env.DSH_WEB_PORT) || 3080
@@ -47,17 +63,23 @@ function detectEncoding(buf) {
   if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return { enc: 'utf8', bom: Buffer.from([0xef, 0xbb, 0xbf]) }
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return { enc: 'utf16le', bom: buf.subarray(0, 2) }
   if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return { enc: 'utf16be', bom: buf.subarray(0, 2) }
+  /* N7e：无 BOM 的 UTF-16LE 启发式（ASCII 内容奇数偏移多为 0x00） */
+  if (buf.length >= 4 && buf.length % 2 === 0) {
+    let zero = 0
+    for (let i = 0; i < buf.length; i += 2) if (buf[i] === 0) zero++
+    if (zero > buf.length / 8) return { enc: 'utf16le', bom: null }
+  }
   return { enc: 'utf8', bom: null }
 }
 
-/* Atomic-ish write: temp file then swap (E4). On Windows, remove target first. */
+/* Atomic-ish write with retry (N7f: short retry loop on Windows rename). */
 function atomicWrite(target, buf) {
   const tmp = target + '.tmp'
   writeFileSync(tmp, buf)
-  try { renameSync(tmp, target) }
-  catch {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { renameSync(tmp, target); return } catch {}
     rmSync(target, { force: true })
-    renameSync(tmp, target)
+    try { renameSync(tmp, target); return } catch (e) { if (attempt === 2) throw e }
   }
 }
 
@@ -85,7 +107,15 @@ function httpProbe() {
 function distCandidates() {
   const out = []
   const push = (p) => { if (p && existsSync(join(p, 'index.html'))) out.push(resolve(p)) }
-  if (opt.dist) { push(opt.dist); return out }
+  if (opt.dist) {
+    /* N7a：显式 --dist 但缺 index.html 时报错，而非静默降级为"未定位" */
+    if (!existsSync(join(opt.dist, 'index.html'))) {
+      console.error(`[dsh-html] --dist 下未找到 index.html: ${opt.dist}`)
+      process.exit(1)
+    }
+    push(opt.dist)
+    return out
+  }
 
   const npmCache = process.env.npm_config_cache
   const home = process.env.HOME || process.env.USERPROFILE || ''
@@ -97,6 +127,11 @@ function distCandidates() {
   if (localApp) roots.add(join(localApp, 'npm-cache', '_npx'))
   if (home) roots.add(join(home, '.npm', '_npx'))
   if (appData) roots.add(join(appData, 'npm', 'node_modules'))
+  /* N7c：pnpm 全局根目录探测 */
+  try {
+    const pnpmRoot = execSync('pnpm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    if (pnpmRoot) roots.add(pnpmRoot)
+  } catch {}
   for (const root of roots) {
     if (!existsSync(root)) continue
     for (const sub of readdirSync(root, { withFileTypes: true })) {
@@ -111,7 +146,7 @@ function distCandidates() {
   for (const g of ['/usr/lib/node_modules', '/usr/local/lib/node_modules', join(home, '.bun', 'install', 'global', 'node_modules')]) {
     push(join(g, '@deepseek-ai', 'dsh-web-frontend', 'dist'))
   }
-  return out
+  return [...new Set(out)] // N7b：去重
 }
 
 /* ---------------- per-dist operations ---------------- */
@@ -179,7 +214,7 @@ async function runTarget(dist) {
   } else if (det.bom) {
     text = buf.subarray(det.bom.length).toString(det.enc)
   }
-  const injected = text.includes(MARKER) || text.includes('/dsh-html/client.js')
+  const injected = MARKER_RE.test(text) || text.includes('/dsh-html/client.js')
 
   const encode = () => {
     let body = Buffer.from(text, 'utf16be' === det.enc ? 'utf16le' : det.enc)
@@ -203,7 +238,7 @@ async function runTarget(dist) {
       copyFileSync(bakPath, indexPath)
       say('OK', `index.html restored from backup -> ${indexPath}`)
     } else {
-      text = text.split(MARKER).join('')
+      text = text.replace(MARKER_RE, '')
       atomicWrite(indexPath, encode())
       say('OK', 'injected script tag removed (no backup existed; line-level restore).')
     }
@@ -254,14 +289,25 @@ async function runTarget(dist) {
 
   syncKatex(katexDst)
 
+  /* 注入 / 升级注入标签（缓存击穿：带当前 client 版本号 ?v=N） */
+  const want = markerTag()
   if (injected) {
-    say('SKIP', 'index.html already injected')
+    if (text.includes(want)) {
+      say('SKIP', 'index.html already injected (current version)')
+    } else if (MARKER_RE.test(text)) {
+      /* 已注入但版本落后：替换标签为新版本号（升级场景，强制浏览器拉新） */
+      text = text.replace(MARKER_RE, want)
+      atomicWrite(indexPath, encode())
+      say('OK', 'injection tag upgraded (cache-bust v' + clientVersion() + ')')
+    } else {
+      say('WARN', 'index.html references /dsh-html/client.js but no standard tag found — leaving as-is')
+    }
   } else {
     const idx = lastBodyIndex(text)
     if (idx < 0) { say('ISSUE', `no '</body>' found in ${indexPath}`); return 1 }
-    text = text.slice(0, idx) + MARKER + '\n' + text.slice(idx)
+    text = text.slice(0, idx) + want + '\n' + text.slice(idx)
     atomicWrite(indexPath, encode())
-    say('OK', 'script tag injected before the last </body>')
+    say('OK', 'script tag injected before the last </body> (cache-bust v' + clientVersion() + ')')
   }
 
   const probe = await httpProbe()

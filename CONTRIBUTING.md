@@ -22,11 +22,17 @@ npm run check          # syntax + version consistency + vendor integrity
 
 ## Testing
 
-- `npm run check` — static guards (syntax / versions / sums).
+- `npm run check` — static guards (syntax / versions / sums / A1 mount guard).
+- `npm run lint` — ESLint (`no-undef` catches A1-class scope bugs).
+- `npm test` — pure-function unit tests (extracted from the shipped source).
 - Manual smoke: run `node install.mjs --check`, then in a DSH session paste one
   of the `examples/` fences and verify: rendered inline, toolbar buttons work
   (源码/新标签/复制/重载), height fits content, no console errors
   (`window.__dshHtmlRenderer.stats()` shows `errors: 0`).
+
+> ⚠️ Do not run bare `npm install` and expect a side-effect-free dependency
+> install: the `install` npm lifecycle name is intentionally **not** used here
+> (N4) — use `npm run setup` to install the renderer into a DSH dist.
 
 ## Submitting
 

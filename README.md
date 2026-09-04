@@ -30,11 +30,13 @@
 powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1
 #    Windows / Linux / macOS（Node 18+，跨平台主安装器）：
 node install.mjs
+#    （npm 用户也可用脚本别名：npm run setup / setup:check / setup:undo）
 #    源码构建请显式指定 dist：
 #    node install.mjs --dist "C:\path\to\apps\web\dist"
 #    多份 npx 部署共存时：加 --all 处理全部探测到的 dist
 
-# 2) 浏览器硬刷新（Ctrl+F5）—— 前端壳对静态资源不设 cache-control，普通刷新可能仍用旧缓存
+# 2) 浏览器硬刷新（Ctrl+F5）—— 前端壳对静态资源不设 cache-control，普通刷新可能仍用旧缓存。
+#    注入标签携带版本号（client.js?v=N），client.js 升级后浏览器会自动拉新（缓存击穿）。
 
 # 3) 在任意会话粘贴下面的测试围栏，看到卡片即成功
 ```
@@ -109,7 +111,8 @@ powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Uninstall
 - **平台**：仅本地/自托管 DSH 部署（需要写 `dist` 的文件系统权限）；云端托管不可用。
 - **升级**：`npx` 重装覆盖 dist 后渲染消失，重跑安装器即可恢复（备份机制保证可还原、可卸载）。
 - **长会话**：每个渲染围栏是一个独立 iframe，历史消息较多时建议用 `__dshHtmlRenderer.disable()` 临时关闭渲染。
-- **硬刷新**：前端壳对静态资源不设 cache-control，升级后必须 Ctrl+F5。
+- **硬刷新**：前端壳对静态资源不设 cache-control，升级后必须 Ctrl+F5；注入标签带版本号（`client.js?v=N`），渲染器升级后浏览器自动拉新。
+- **npm 脚本**：仓库内 `npm run setup / setup:check / setup:undo` 等价于 `node install.mjs [--check/--uninstall]`；`npm run check`（语法+版本+校验和+A1 守卫）、`npm run lint`（ESLint）、`npm test`（纯函数单测）。
 - **浏览器支持矩阵**：Chromium 120+ / Firefox 121+ / Safari 17.5+（依赖 `light-dark()`、`backdrop-filter`、`ResizeObserver`、`:focus-within`）。
 - **端口探测**：安装器的 HTTP 自检默认 `3080`，可用环境变量 `DSH_WEB_PORT` 覆盖，或 `install.mjs --port <n>`。
 

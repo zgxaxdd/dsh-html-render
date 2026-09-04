@@ -1,5 +1,5 @@
 /* dsh-html renderer — 在 DSH 会话消息流中内联渲染 HTML
- * dsh-html-renderer version: 5
+ * dsh-html-renderer version: 6
  *
  * 通道一（fence 通道）：接管 ```dsh-html（及内容判定的 ```html）代码块，
  *  在原始代码块旁挂载 iframe(srcdoc)，sandbox="allow-scripts"（不透明源），
@@ -29,7 +29,7 @@
  */
 (function () {
   'use strict'
-  var VERSION = 5
+  var VERSION = 6
   if (window.__dshHtmlRenderer) {
     try {
       if (typeof window.__dshHtmlRenderer.disable === 'function') window.__dshHtmlRenderer.disable()
@@ -258,11 +258,12 @@
     return true
   }
 
-  /* ```html 内容的文档/卡片形态判定。 */
+  /* ```html 内容的文档/卡片形态判定（A3：结构化，提高召回）。
+   * 剥离前导空白/注释/doctype 后，块级容器起始或含 <style> 即接管。 */
   function looksLikeHtmlFragment(raw) {
-    var t = raw.replace(/^\s+/, '')
-    if (/^<(!doctype|html\b|div class="mdt")/i.test(t)) return true
-    if (/<style[\s>]/i.test(raw) && /class="mdt"/.test(raw)) return true
+    var t = raw.replace(/^\s+/, '').replace(/^<!--[\s\S]*?-->\s*/, '').replace(/^<!doctype[^>]*>/i, '')
+    if (/^<(?:div|section|article|main|aside|figure|table|ul|ol|header|footer|details)\b/i.test(t)) return true
+    if (/<style[\s>]/i.test(raw)) return true
     return false
   }
 
@@ -307,8 +308,10 @@
     if (label === 'dsh-html' && raw.trim() !== '') return true
     if (label === 'html') return looksLikeHtmlFragment(raw)
     if (label === '' && raw.replace(/^\s+/, '').length > 0) {
-      /* 流式中标签尚未渲染：仅当内容以 HTML 形态起始时渐进接管。 */
-      return /^<(!doctype|html\b|div class="mdt")/i.test(raw.replace(/^\s+/, ''))
+      /* 流式中标签尚未渲染：仅当内容以块级 HTML 形态起始时渐进接管。 */
+      var t = raw.replace(/^\s+/, '')
+      return /^<(!doctype|html\b|div|section|article|main|aside|figure|table|ul|ol|header|footer|details)\b/i.test(t) ||
+        /<style[\s>]/i.test(raw)
     }
     return false
   }
@@ -417,6 +420,19 @@
       '</head><body style="margin:4px 6px;color-scheme:light dark;' +
       'background:' + pal.bg + ';color:' + pal.fg + ';">' +
       raw +
+      /* B7：把被沙箱静默阻断的 alert/confirm/prompt 重定向为页内 toast，
+       * 让"写 alert 没反应"变成可见反馈（无脚本时也无害）。 */
+      '<script>try{(function(){' +
+      'function toast(m){var d=document.createElement("div");' +
+      'd.style.cssText="position:fixed;right:12px;bottom:12px;z-index:2147483647;' +
+      'background:rgba(30,41,59,.96);color:#e2e8f0;border-radius:8px;padding:8px 14px;' +
+      'font:12px/1.5 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.4);' +
+      'max-width:80%;pointer-events:none";d.textContent=m;document.body.appendChild(d);' +
+      'setTimeout(function(){d.remove()},2600)}' +
+      'window.alert=function(m){toast("[alert] "+m)};' +
+      'window.confirm=function(){toast("[confirm] 被沙箱阻断，已按“确定”返回 false");return false};' +
+      'window.prompt=function(){toast("[prompt] 被沙箱阻断");return null}' +
+      '})()}catch(e){}</script>' +
       helperScript(mid == null ? 0 : mid) +
       '</body></html>'
     )
@@ -425,10 +441,14 @@
   /* ------------------------------------------------------------------ *
    * 样式
    * ------------------------------------------------------------------ */
+  var STYLE_ID = 'dsh-html-style-v' + VERSION
   function injectStyle() {
-    if (document.getElementById('dsh-html-style')) return
+    /* N5：样式元素带版本号 —— 旧版残留时先移除再注入，保证新规则生效。 */
+    var existing = document.querySelector('[id^="dsh-html-style"]')
+    if (existing && existing.id === STYLE_ID) return
+    if (existing) existing.remove()
     var style = document.createElement('style')
-    style.id = 'dsh-html-style'
+    style.id = STYLE_ID
     style.textContent =
       '' +
       /* 无痕融入对话流：无边框、无底色、无内阴影；工具栏仅悬停浮现。 */
@@ -468,6 +488,17 @@
   var mounts = new Map() // block -> mount
   var liveFrames = new Map() // id -> { iframe, onHeight }（fence + 片段共用）
   var mountSeq = 0
+
+  /* N2：liveFrames 带容量上限 —— 超出 200 先淘汰已断连条目，再兜底淘汰最旧。 */
+  function liveFramesAdd(id, rec) {
+    if (liveFrames.size >= 200) {
+      for (var e of liveFrames) {
+        if (!e[1].iframe.isConnected) { liveFrames.delete(e[0]); break }
+      }
+      if (liveFrames.size >= 200) liveFrames.delete(liveFrames.keys().next().value)
+    }
+    liveFrames.set(id, rec)
+  }
 
   function makeToolbar() {
     var bar = document.createElement('div')
@@ -560,7 +591,7 @@
       },
     }
     mounts.set(block, mount)
-    liveFrames.set(mount.id, {
+    liveFramesAdd(mount.id, {
       iframe: frame,
       onHeight: function (trunc) {
         if (mount.truncated !== trunc) {
@@ -775,10 +806,14 @@
       var row = rows[r]
       var anchor = row.getAttribute('data-chat-anchor-key') || ''
       if (anchor.indexOf('assistant') === -1) continue
-      /* 先丢弃已断开的旧包装（D4 简化）。 */
+      /* 先丢弃已断开的旧包装，并同步释放 liveFrames 条目（N2）。 */
       var olds = row.querySelectorAll('[' + FRAG_MARK + ']')
       for (var o = 0; o < olds.length; o++) {
-        if (!olds[o].isConnected) olds[o].remove()
+        var old = olds[o]
+        if (!old.isConnected) {
+          if (old._dshFrameId != null) liveFrames.delete(old._dshFrameId)
+          old.remove()
+        }
       }
       /* 文本节点走查：找以 HTML 形态开头的纯文本段落。 */
       var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, null)
@@ -805,14 +840,17 @@
     wrap.setAttribute(FRAG_MARK, '')
     var frame = document.createElement('iframe')
     frame.className = 'dsh-html-frame'
+    /* N6：标题与沙箱语义对齐说明 —— 通道二允许脚本（兼容旧协议裸片段
+     * 可能带交互脚本），安全仍由不透明源 + CSP 兜底。 */
     frame.setAttribute('sandbox', 'allow-scripts')
     frame.setAttribute('loading', 'eager')
-    frame.setAttribute('title', 'dsh-html 静态卡片')
+    frame.setAttribute('title', 'dsh-html 卡片')
     frame.style.height = '120px'
     wrap.appendChild(frame)
     parent.replaceWith(wrap)
     var id = ++mountSeq
-    liveFrames.set(id, { iframe: frame, onHeight: function () {} })
+    wrap._dshFrameId = id
+    liveFramesAdd(id, { iframe: frame, onHeight: function () {} })
     try {
       frame.srcdoc = wrapDocument(text, null, id, false)
     } catch (e) { dbg(e) }
@@ -914,10 +952,8 @@
     liveFrames.clear()
   }
 
-  /* D9：页面卸载时统一清理（定时器/observer/iframe）。 */
-  window.addEventListener('pagehide', function () {
-    try { if (!disposed) window.__dshHtmlRenderer.disable() } catch (e) {}
-  })
+  /* D9→N3：不注册 pagehide 全量 disable —— 它会命中 bfcache 恢复路径，
+   * 造成"后退回来渲染器已停摆"。页面真销毁时浏览器自会回收一切。 */
 
   if (document.body) onBodyReady()
   else window.addEventListener('DOMContentLoaded', onBodyReady)

@@ -1,5 +1,41 @@
 # Changelog
 
+## v3.3.0 — 审查修复 N1–N7：缓存击穿/泄漏/bfcache/工程护栏（运行时标记 version: 6）
+
+**核心修复：缓存击穿（“功能无法使用”根治）**
+- 注入标签携带 client 版本号：`<script src="/dsh-html/client.js?v=6" defer>` —— client.js 升级后浏览器强制拉新，杜绝旧版（含 A1/A2 致命 bug 的 v4）长期驻留缓存。安装器在 apply 时自动升级旧标签（无 ?v → 当前版本）；卸载用正则兼容两种形态。
+
+**N1 · vendor 完整性（跨平台根治）**
+- 新增 `.gitattributes`（`vendor/** -text`、文本统一 eol）—— 此前审查者机器上 SHA256SUMS 不匹配的根因是 git 行尾归一化（autocrlf），非文件被改。
+- `SHA256SUMS` 改由 Node 同源脚本 `tools/gen-sha256sums.mjs` 生成（24 项，含 VERSION）。
+- `verify-sha256sums.mjs` 升级为**双向校验**（清单内文件存在 + 目录内文件全在清单，防删除）+ 不匹配时打印期望/实际值。
+
+**N2 · liveFrames 泄漏**
+- 通道二片段 iframe 的 liveFrames 条目在孤儿清理时同步 `delete`（`wrap._dshFrameId` 关联）；新增 `liveFramesAdd()` 容量上限 200（先淘汰已断连，再兜底最旧），泄漏封顶。
+
+**N3 · bfcache 回归**
+- 移除 `pagehide` 全量 `disable()` —— 该监听命中前进/后退缓存恢复路径，导致“后退回来渲染器停摆、围栏永久退回代码块”。页面真销毁时浏览器自会回收。
+
+**N4 · npm install 劫持**
+- `package.json` 的 `install` 脚本改名 `setup / setup:check / setup:undo` —— 在仓库里 `npm install` 不再意外运行 DSH 安装器。
+
+**N5 · 样式版本化**
+- `STYLE_ID = 'dsh-html-style-v' + VERSION`，旧版残留时先移除再注入，避免新 CSS 规则（focus-visible/reduced-motion/disabled）缺失。
+
+**N6 · 通道二语义**
+- iframe title 改为「dsh-html 卡片」，注释说明允许脚本的兼容性考量（仍受不透明源 + CSP 约束）。
+
+**N7 · install.mjs 细节**
+- `--dist` 指向无 index.html 的目录时显式报错（不再静默“未定位”）；候选路径去重；补 `pnpm root -g` 探测；`--port` 参数校验；UTF-16LE 无 BOM 启发式识别；`atomicWrite` 短重试循环。
+
+**G3 · 工程护栏（防 A1 类回归）**
+- 引入 ESLint 9 flat config（`no-undef` 直接拦 A1 类作用域误用、`no-unused-vars`、`no-empty` 允许有意空 catch）—— CI + `npm run lint`。
+- 纯函数单测 `tools/test-unit.mjs`（node:test + 从源码提取函数体执行，零依赖）：hasLatex / A3 结构化判定 / safeColor 白名单 / helperScript 常量注入 —— CI `npm test`。
+- `tools/check-mount-refs.mjs`：A1 静态守卫（无 `mountObj`、`var mount = {` 存在、三个按钮模式在位）—— CI + `npm run check`。
+- 修复 ESLint 捕获的真实问题：`install.mjs` 未用 import `statSync`。
+
+**部署**：client.js v6（35773 字节）已同步，index.html 标签升级为 `?v=6`，HTTP 探测 renderer v6。
+
 ## v3.2.0 — 审查修复：工具栏按钮/通道二沙箱/安全加固/性能（运行时标记 version: 5）
 
 对照 2026-09 深度审查（A/B/C/D/E/F/G 清单）修复：

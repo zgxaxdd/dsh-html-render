@@ -1,0 +1,8 @@
+# 保持 vendor 与文本文件字节一致，避免行尾归一化破坏 SHA256SUMS / 哈希校验
+vendor/** -text
+*.js text eol=lf
+*.mjs text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.ps1 text eol=crlf
+*.json text eol=lf

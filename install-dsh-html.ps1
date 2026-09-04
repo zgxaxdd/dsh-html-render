@@ -77,13 +77,20 @@ function Invoke-Target([string]$dist) {
     $katexSrcDir = Join-Path $PSScriptRoot 'vendor\katex'
     $katexDstDir = Join-Path $clientDir 'katex'
     $bakPath = "$indexPath.bak"
-    $marker = '<script src="/dsh-html/client.js" defer></script>'
+    # 缓存击穿：注入标签带 client 版本号（?v=N），升级后浏览器强制拉新
+    $clientVer = '0'
+    if (Test-Path $clientSrc) {
+        $cs = [System.IO.File]::ReadAllText($clientSrc)
+        if ($cs -match 'dsh-html-renderer version:\s*(\d+)') { $clientVer = $Matches[1] }
+    }
+    $marker = "<script src=""/dsh-html/client.js?v=$clientVer"" defer></script>"
+    $markerRe = '<script src="/dsh-html/client\.js(?:\?v=\d+)?" defer></script>'
 
     Write-Host "[INFO] dist = $dist"
     if (-not (Test-Path $indexPath)) { Write-Host "[ISSUE] index.html not found at $indexPath"; return 1 }
 
     $html = [System.IO.File]::ReadAllText($indexPath)
-    $injected = $html.Contains($marker) -or $html -match '/dsh-html/client\.js'
+    $injected = ($html -match $markerRe) -or ($html -match '/dsh-html/client\.js')
 
     # --- uninstall ------------------------------------------------------------
     if ($Uninstall) {
@@ -92,7 +99,7 @@ function Invoke-Target([string]$dist) {
                 Copy-Item $bakPath $indexPath -Force
                 Write-Host "[OK] index.html restored from backup -> $indexPath"
             } else {
-                $clean = $html.Replace($marker, '').Replace("$marker`n", '')
+                $clean = [regex]::Replace($html, $markerRe, '')
                 $tmp = "$indexPath.tmp"
                 [System.IO.File]::WriteAllText($tmp, $clean, (New-Object System.Text.UTF8Encoding($false)))
                 Move-Item $tmp $indexPath -Force   # E4：原子替换
@@ -190,7 +197,18 @@ function Invoke-Target([string]$dist) {
     }
 
     if ($injected) {
-        Write-Host '[SKIP] index.html already injected'
+        if ($html.Contains($marker)) {
+            Write-Host '[SKIP] index.html already injected (current version)'
+        } elseif ($html -match $markerRe) {
+            # 已注入但版本落后：替换标签为新版本号（缓存击穿升级）
+            $new = [regex]::Replace($html, $markerRe, $marker)
+            $tmp = "$indexPath.tmp"
+            [System.IO.File]::WriteAllText($tmp, $new, (New-Object System.Text.UTF8Encoding($false)))
+            Move-Item $tmp $indexPath -Force        # E4：原子替换
+            Write-Host "[OK] injection tag upgraded (cache-bust v$clientVer)"
+        } else {
+            Write-Host '[WARN] index.html references /dsh-html/client.js but no standard tag found — leaving as-is'
+        }
     } else {
         # E3：定位【最后一个】</body>（大小写不敏感）再注入，避免误伤内联 JS 字符串
         $idx = $html.LastIndexOf('</body>', [System.StringComparison]::OrdinalIgnoreCase)
@@ -199,7 +217,7 @@ function Invoke-Target([string]$dist) {
         $tmp = "$indexPath.tmp"
         [System.IO.File]::WriteAllText($tmp, $new, (New-Object System.Text.UTF8Encoding($false)))
         Move-Item $tmp $indexPath -Force        # E4：原子替换
-        Write-Host '[OK] script tag injected before the last </body>'
+        Write-Host "[OK] script tag injected before the last </body> (cache-bust v$clientVer)"
     }
 
     try {
