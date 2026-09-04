@@ -15,12 +15,16 @@
  *   LaTeX 由父页 KaTeX（本地 /dsh-html/katex/ 静态托管，零外网）预渲染为
  *   数学 HTML 后整体注入 srcdoc —— 一次成型、高度测量准确、不出现未渲染源码；
  *   KaTeX 就绪前暂不挂内容（绝不显示公式源码）。
+ * 公式安全（v4）：公式替换前先把 HTML 标签与 script/style/pre/code 块摘成
+ *   占位符 —— 公式绝不进标签、属性与代码；行内 $ 含 CJK 视为普通文本；
+ *   KaTeX 不可用时原文直出（围栏永不卡死不渲染）；超 12000px 上限在
+ *   工具栏显示「高度已截断」；新标签打开强制 noopener。
  * 无框架、除本地 KaTeX 外无网络请求；所有操作均 try/catch，绝不让页面崩溃。
  */
 (function () {
   'use strict'
   if (window.__dshHtmlRenderer) return
-  window.__dshHtmlRenderer = { version: 3, startedAt: Date.now() }
+  window.__dshHtmlRenderer = { version: 4, startedAt: Date.now() }
 
   /* ------------------------------------------------------------------ *
    * 常量
@@ -43,6 +47,7 @@
    *  ------------------------------------------------------------------ */
   var katexState = null // null | 'loading' | 'ok' | 'fail'
   var katexQueue = null
+  var katexFailQueue = null
   var katexCssCache = null // 内联 CSS 字符串（含字体路径改写）
   var katexCssPromise = null
 
@@ -57,12 +62,17 @@
     return false
   }
 
-  function ensureKatex(cb) {
+  function ensureKatex(cb, onFail) {
     if (katexState === 'ok') { cb(); return }
-    if (katexState === 'loading') { katexQueue.push(cb); return }
-    if (katexState === 'fail') return // 加载失败：保留原文，不再尝试
+    if (katexState === 'loading') {
+      katexQueue.push(cb)
+      if (onFail) katexFailQueue.push(onFail)
+      return
+    }
+    if (katexState === 'fail') { if (onFail) onFail(); return } // 已失败：走降级回调，绝不悬挂
     katexState = 'loading'
     katexQueue = [cb]
+    katexFailQueue = onFail ? [onFail] : []
     var sc = document.createElement('script')
     sc.src = '/dsh-html/katex/katex.min.js'
     sc.async = true
@@ -70,9 +80,16 @@
       katexState = 'ok'
       var q = katexQueue
       katexQueue = null
+      katexFailQueue = null
       for (var i = 0; i < q.length; i++) { try { q[i]() } catch (e) {} }
     }
-    sc.onerror = function () { katexState = 'fail'; katexQueue = null }
+    sc.onerror = function () {
+      katexState = 'fail'
+      var qf = katexFailQueue
+      katexQueue = null
+      katexFailQueue = null
+      for (var j = 0; qf && j < qf.length; j++) { try { qf[j]() } catch (e) {} }
+    }
     document.head.appendChild(sc)
   }
 
@@ -110,22 +127,35 @@
     } catch (e) { return src }
   }
 
-  /* 按 $$$$ → \[ \] → \( \) → $ $ 顺序替换；渲染失败保留原文。 */
+  /* 按 $$ → \[ \] → \( \) → $ $ 顺序替换；渲染失败保留原文。
+   * 替换前把 HTML 标签与 script/style/pre/code 块摘成占位符 —— 公式绝不进
+   * 标签内部、属性值与代码；行内 $ 内容含 CJK 时视为普通文本（防货币/正文误判）。 */
   function replaceLatex(raw) {
-    var out = raw
-    out = out.replace(/\$\$([\s\S]+?)\$\$/g, function (_, s) { return renderTex(s, true) })
-    out = out.replace(/\\\[([\s\S]+?)\\\]/g, function (_, s) { return renderTex(s, true) })
-    out = out.replace(/\\\(([\s\S]+?)\\\)/g, function (_, s) { return renderTex(s, false) })
-    out = out.replace(/\$([^\s$][\s\S]*?[^\s$])\$/g, function (_, s) { return renderTex(s, false) })
-    return out
+    var tokens = []
+    var kept = raw.replace(
+      /<script[\s\S]*?<\/script\s*>|<style[\s\S]*?<\/style\s*>|<pre[\s\S]*?<\/pre\s*>|<code[\s\S]*?<\/code\s*>|<[^>]*>/gi,
+      function (m) { tokens.push(m); return '\u0000' + (tokens.length - 1) + '\u0000' }
+    )
+    kept = kept
+      .replace(/\$\$([\s\S]+?)\$\$/g, function (m, s) { return renderTex(s, true) })
+      .replace(/\\\[([\s\S]+?)\\\]/g, function (m, s) { return renderTex(s, true) })
+      .replace(/\\\(([\s\S]+?)\\\)/g, function (m, s) { return renderTex(s, false) })
+      .replace(/\$([^\s$\u0000\n][^$\u0000\n]*?[^\s$\u0000\n])\$/g, function (m, s) {
+        if (/[\u4e00-\u9fff]/.test(s)) return m
+        return renderTex(s, false)
+      })
+    return kept.replace(/\u0000(\d+)\u0000/g, function (m, i) { return tokens[+i] })
   }
 
   /* 富化原始围栏内容：无公式同步返回；有公式时等 KaTeX/CSS 就绪后
-   * 返回「公式已渲染的 HTML + 内联 KaTeX CSS」（首次可能异步）。 */
+   * 返回「公式已渲染的 HTML + 内联 KaTeX CSS」（首次可能异步）。
+   * KaTeX 不可用时走降级回调 —— 原文直出，围栏永不卡死不渲染。 */
   function enrichRaw(raw, cb) {
     if (!hasLatex(raw)) { cb(raw, null); return }
     ensureKatex(function () {
       ensureKatexCss(function (css) { cb(replaceLatex(raw), css) })
+    }, function () {
+      cb(raw, null)
     })
   }
 
@@ -263,14 +293,14 @@
     'var b=document.body,h=document.documentElement;' +
     'var y1=b?b.getBoundingClientRect().bottom:0;' +
     'var y2=h?h.getBoundingClientRect().bottom:0;' +
-    'return Math.ceil(Math.max(y1,y2))+8;' +
+    'return Math.ceil(Math.max(y1,y2));' +
     '}' +
     'function report(){' +
-    'var h=contentH();' +
-    'h=Math.min(h,12000);' +
+    'var full=contentH()+8;' +
+    'var h=Math.min(full,12000);' +
     'if(h===last)return;' +
     'last=h;' +
-    'try{parent.postMessage({kind:"dsh-html-height",h:h},"*")}catch(e){}' +
+    'try{parent.postMessage({kind:"dsh-html-height",h:h,full:full},"*")}catch(e){}' +
     '}' +
     'window.addEventListener("load",report);' +
     'if(document.readyState!=="loading")report();' +
@@ -445,6 +475,7 @@
     frame.className = 'dsh-html-frame'
     frame.setAttribute('sandbox', 'allow-scripts')
     frame.setAttribute('loading', 'eager')
+    frame.setAttribute('title', 'dsh-html 预览')
     frame.style.height = '180px'
     view.appendChild(frame)
     container.appendChild(ui.bar)
@@ -470,9 +501,9 @@
       try {
         var doc = wrapDocument(mountObj.lastHtml || raw, mountObj.lastCss || null)
         var url = URL.createObjectURL(new Blob([doc], { type: 'text/html' }))
-        var w = window.open(url, '_blank')
-        if (w) w.addEventListener('unload', function () { URL.revokeObjectURL(url) })
-        else URL.revokeObjectURL(url)
+        /* noopener：新页面拿不到 window.opener；文档自包含，60s 后回收 blob。 */
+        window.open(url, '_blank', 'noopener')
+        setTimeout(function () { try { URL.revokeObjectURL(url) } catch (e) {} }, 60000)
       } catch (e) {}
     })
     ui.bCopy.addEventListener('click', function () {
@@ -521,7 +552,7 @@
     mount.raw = raw
     mount.settled = settled
     if (mount.ui) {
-      mount.ui.st.textContent = settled ? '' : '渲染中…'
+      mount.ui.st.textContent = mount.truncated ? '高度已截断' : (settled ? '' : '渲染中…')
       mount.ui.bReload.disabled = settled ? false : true
     }
     var now = Date.now()
@@ -718,18 +749,37 @@
     sweep()
   }
 
-  /* iframe 高度上报 */
+  /* iframe 高度上报（含截断指示） */
   window.addEventListener('message', function (ev) {
     var d = ev && ev.data
     if (!d || d.kind !== 'dsh-html-height') return
     var h = typeof d.h === 'number' ? Math.max(40, Math.min(d.h, MAX_HEIGHT)) : null
     if (h === null) return
+    var trunc = typeof d.full === 'number' ? d.full > MAX_HEIGHT : false
     for (var entry of mounts.values()) {
       if (entry.iframe.contentWindow === ev.source) {
         entry.iframe.style.height = h + 'px'
+        if (entry.truncated !== trunc) {
+          entry.truncated = trunc
+          if (entry.ui) entry.ui.st.textContent = trunc ? '高度已截断' : (entry.settled ? '' : '渲染中…')
+        }
       }
     }
   })
+
+  /* 运行时诊断（控制台：__dshHtmlRenderer.stats()） */
+  window.__dshHtmlRenderer.stats = function () {
+    var trunc = 0
+    for (var entry of mounts.values()) { if (entry.truncated) trunc++ }
+    return {
+      version: 4,
+      startedAt: window.__dshHtmlRenderer.startedAt,
+      mounts: mounts.size,
+      truncated: trunc,
+      katex: katexState,
+      palette: { bg: paletteCache.bg, fg: paletteCache.fg },
+    }
+  }
 
   /* 卸载开关（便于宿主 stop 后由刷新清理；此时调用可立即还原）。 */
   window.__dshHtmlRenderer.disable = function () {

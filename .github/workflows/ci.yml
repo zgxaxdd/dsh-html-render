@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Renderer syntax check
+        run: node --check dsh-html-client.js
+
+      - name: Installer PowerShell syntax check
+        run: pwsh -NoProfile -Command '$t=$null; $e=$null; [System.Management.Automation.Language.Parser]::ParseFile("install-dsh-html.ps1", [ref]$t, [ref]$e) | Out-Null; if ($e.Count -gt 0) { $e | ForEach-Object { Write-Host $_.Message }; exit 1 } else { Write-Host "install-dsh-html.ps1 syntax OK" }'
+
+      - name: Vendor integrity
+        run: |
+          test -f vendor/katex/katex.min.js
+          test -f vendor/katex/katex.min.css
+          test -f vendor/katex/LICENSE
+          n=$(ls vendor/katex/fonts/*.woff2 | wc -l)
+          echo "katex fonts: $n woff2"
+          test "$n" -ge 20

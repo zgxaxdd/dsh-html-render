@@ -13,7 +13,8 @@
 | **聊天内直渲** | 模型输出 ```` ```dsh-html ```` 围栏 → 聊天流内出现真 HTML（不是代码块、不是 Markdown 源码） |
 | **LaTeX 公式** | `$…$`（行内）/ `$$…$$`（块级）/ `\(…\)` / `\[…\]` 由**本地 KaTeX** 预渲染 —— 零外网、绝不出现未渲染源码 |
 | **无痕融入** | 无边框无底色；背景**实时采样宿主主题**（深色模式下就是深色），与对话流无缝 |
-| **高度精确自适应** | 按内容真实边界测高 + 字体就绪重测 + 轮询兜底 —— 无内部滚动条、无空白、无"越测越高" |
+- **公式安全** | 公式替换前先摘除 HTML 标签与 script/style/pre/code 块 —— 公式绝不进代码；KaTeX 不可用时原文直出，**围栏永不卡死不渲染** |
+| **高度精确自适应** | 按内容真实边界测高 + 字体就绪重测 + 轮询兜底 —— 无内部滚动条、无空白、无"越测越高"；超 12000px 上限时工具栏明示「高度已截断」 |
 | **交互全支持** | 页签 / 折叠 / 滑杆 / 即时计算 / 本地判分 —— 脚本只在本围栏沙箱内运行 |
 | **安全沙箱** | `sandbox="allow-scripts"` 不透明源 + 文档内 CSP：禁网络、禁 iframe、禁访问父页 |
 | **零依赖** | 一个 ~28KB IIFE（除 KaTeX 外无任何依赖、无构建步骤、无框架） |
@@ -28,6 +29,7 @@
 powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1
 #    源码构建请显式指定 dist：
 #    powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Dist "C:\path\to\apps\web\dist"
+#    多份 npx 部署共存时：加 -All 处理全部探测到的 dist
 
 # 2) 浏览器硬刷新（Ctrl+F5）—— 前端壳对静态资源不设 cache-control，普通刷新可能仍用旧缓存
 
@@ -55,7 +57,7 @@ $$T = 9550 \times \frac{P}{n} \approx 10.2\ \mathrm{N\cdot m}$$
 powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Check
 ```
 
-全部 `[OK]` 且 `HTTP: 200, served renderer version 3` 即安装完好。
+全部 `[OK]` 且 `HTTP: 200, served renderer version …` 与 [CHANGELOG](CHANGELOG.md) 最新版本一致，即安装完好。
 
 ## 📦 Examples
 
@@ -101,7 +103,7 @@ powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Uninstall
 ## ❓ FAQ
 
 - **围栏还是显示成代码块？** 先 Ctrl+F5 硬刷新；控制台查 `window.__dshHtmlRenderer` 是否存在；再跑 `-Check`。
-- **公式显示为 `$…$` 源码？** KaTeX 缺失 —— 确认 `vendor\katex\` 与安装器在同目录并重跑安装；浏览器访问 `http://127.0.0.1:3080/dsh-html/katex/katex.min.js` 应返回 200。
+- **公式显示为 `$…$` 源码？** 其余内容仍会渲染（v3.1 起公式通道失败自动降级、围栏不卡死）。这是 KaTeX 缺失 —— 确认 `vendor\katex\` 与安装器在同目录并重跑安装；浏览器访问 `http://127.0.0.1:3080/dsh-html/katex/katex.min.js` 应返回 200。
 - **DSH 升级后渲染没了？** npx 缓存被覆盖，属预期 —— 重跑安装脚本（备份机制保证 index.html 可还原）。
 - **云端托管部署能用吗？** 不能。需要写 `dist` 目录的文件系统权限；仅限本地/自托管部署。
 - **与 dsh-genui 冲突吗？** 不冲突：它接管 `dsh-ui` 栅栏，本项目接管 `dsh-html`/`html`，语言互斥，可同时安装。
