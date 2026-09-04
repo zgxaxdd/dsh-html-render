@@ -25,7 +25,6 @@ const bundleDir = join(root, 'bundle')
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const version = pkg.version
 const kernel = readFileSync(join(root, 'dsh-html-client.js'), 'utf8')
-const skill = readFileSync(join(root, 'skills', 'dsh-html-usage', 'SKILL.md'), 'utf8')
 
 /* reset output */
 rmSync(bundleDir, { recursive: true, force: true })
@@ -66,8 +65,6 @@ writeFileSync(join(bundleDir, 'cordis.patch.yml'), `# dsh-html-render bundle for
 `)
 
 /* 3. host half: asset route + systemPrompt section + bundled skill */
-const BT = String.fromCharCode(96) /* backtick, avoids escaping in this builder */
-const F3 = BT + BT + BT
 const indexJs = `/**
  * dsh-html-render — host half (P0-1 out-of-tree profile bundle).
  *
@@ -84,6 +81,8 @@ const indexJs = `/**
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const F3 = String.fromCharCode(96, 96, 96);
 
 const ASSET_ROUTE_PATH = "/plugins/dsh-html-render/assets";
 const ALLOWED_RE = /\\.(js|css|woff2|json)$/;

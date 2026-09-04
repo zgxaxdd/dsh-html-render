@@ -15,6 +15,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const F3 = String.fromCharCode(96, 96, 96);
+
 const ASSET_ROUTE_PATH = "/plugins/dsh-html-render/assets";
 const ALLOWED_RE = /\.(js|css|woff2|json)$/;
 const MIME = {
