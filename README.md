@@ -17,7 +17,7 @@
 | **高度精确自适应** | 按内容真实边界测高 + 字体就绪重测 + 轮询兜底 —— 无内部滚动条、无空白、无"越测越高"；超 12000px 上限时工具栏明示「高度已截断」 |
 | **交互全支持** | 页签 / 折叠 / 滑杆 / 即时计算 / 本地判分 —— 脚本只在本围栏沙箱内运行 |
 | **安全沙箱** | `sandbox="allow-scripts"` 不透明源 + 文档内 CSP：禁网络、禁 iframe、禁访问父页 |
-| **零依赖** | 一个 ~28KB IIFE（除 KaTeX 外无任何依赖、无构建步骤、无框架） |
+| **零依赖** | 一个 ~30 KB IIFE（除 KaTeX 外无任何依赖、无构建步骤、无框架） |
 | **流式渲染** | 模型边写边渲染，不必等整条回复结束 |
 
 ## 🚀 Quick Start（3 步，约 1 分钟）
@@ -90,7 +90,7 @@ powershell -ExecutionPolicy Bypass -File .\install-dsh-html.ps1 -Check
 
 ## 🧩 作用域：能力全局，行为随 skill
 
-安装后，本 GUI 内**所有会话/工作区**自动获得渲染能力。但"模型何时主动输出 dsh-html"由行为层（skill）决定 —— 仓库附带通用模板 [`skills/dsh-html-usage/SKILL.md`](skills/dsh-html-usage/SKILL.md)：把它放进你的 Agent 预设 `skills/` 目录或工作区，模型就学会了"何时写围栏、怎么排版、限额多少"。
+安装后，本 GUI 内**所有会话/工作区**自动获得渲染能力。但"模型何时主动输出 dsh-html"由行为层（skill）决定 —— 仓库附带通用模板 [`skills/dsh-html-usage/SKILL.md`](skills/dsh-html-usage/SKILL.md)（含 **5 种视觉风格库**：无痕卡 A / 驾驶舱 B / 工程蓝图 C / 杂志编辑 D / 终端 E）：把它放进你的 Agent 预设 `skills/` 目录或工作区，模型就学会了"何时写围栏、选哪种风格、限额多少"。
 
 ## 🗑️ 卸载
 
