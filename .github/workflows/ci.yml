@@ -20,6 +20,11 @@ jobs:
       - name: Renderer syntax
         run: node --check dsh-html-client.js
 
+      - name: Bundle syntax (generated plugin halves)
+        run: |
+          node --check bundle/lib/client.js
+          node --check bundle/lib/index.js
+
       - name: Installer syntax (node + powershell)
         run: |
           node --check install.mjs
